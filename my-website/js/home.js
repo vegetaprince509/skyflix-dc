@@ -73,8 +73,11 @@ async function fetchKoreanDramas() {
 // Banner Functions
 // ======================
 function displayBanner(item) {
+  if (!item) return;
+
   document.getElementById("banner").style.backgroundImage =
     `url(${IMG_URL}${item.backdrop_path})`;
+
   document.getElementById("banner-title").textContent = item.title || item.name;
   document.getElementById("banner-description").textContent =
     item.overview || "No description available";
@@ -82,7 +85,6 @@ function displayBanner(item) {
 
 function startBannerRotation(movies) {
   if (bannerInterval) clearInterval(bannerInterval);
-
   if (!movies || !movies.length) return;
 
   displayBanner(movies[0]);
@@ -146,10 +148,7 @@ function showDetails(item) {
     item.overview || "No description available";
   document.getElementById("modal-image").src = `${IMG_URL}${item.poster_path}`;
 
-  const rating = item.vote_average
-    ? item.vote_average.toFixed(1)
-    : "N/A";
-
+  const rating = item.vote_average ? item.vote_average.toFixed(1) : "N/A";
   document.getElementById("modal-rating").innerHTML = `
     <span style="font-weight: bold; color: white;">IMDb:</span> ${rating}/10
   `;
@@ -269,7 +268,7 @@ function createVisitorWidget() {
     </div>
     <div class="visitor-row">
       <span>Online Now</span>
-      <strong id="visitor-online-count">...</strong>
+      <strong id="visitor-online-count">0</strong>
     </div>
     <div class="visitor-row">
       <span>Your Country</span>
@@ -321,10 +320,13 @@ async function startLiveVisitors() {
   createVisitorWidget();
 
   const countEl = document.getElementById("visitor-online-count");
+  if (countEl) countEl.textContent = "0";
+
   const country = await getVisitorCountry();
 
   if (!window.firebase) {
-    if (countEl) countEl.textContent = "Firebase missing";
+    if (countEl) countEl.textContent = "Missing";
+    console.error("Firebase scripts not loaded.");
     return;
   }
 
@@ -337,24 +339,42 @@ async function startLiveVisitors() {
     const connectedRef = db.ref(".info/connected");
     const presenceRef = db.ref("presence");
 
+    presenceRef.on(
+      "value",
+      (snapshot) => {
+        const data = snapshot.val();
+        const total = data ? Object.keys(data).length : 0;
+        if (countEl) countEl.textContent = String(total);
+      },
+      (error) => {
+        console.error("Presence read failed:", error);
+        if (countEl) countEl.textContent = "Error";
+      }
+    );
+
     connectedRef.on("value", (snap) => {
-      if (snap.val() !== true) return;
+      const isConnected = snap.val();
 
-      const visitorRef = presenceRef.push();
+      if (isConnected === false) {
+        console.warn("Firebase not connected.");
+        return;
+      }
 
-      visitorRef.onDisconnect().remove().then(() => {
+      if (isConnected === true) {
+        const visitorRef = presenceRef.push();
+
+        visitorRef.onDisconnect().remove();
+
         visitorRef.set({
           country: country || "Unknown",
           joinedAt: firebase.database.ServerValue.TIMESTAMP,
-          page: location.pathname
+          page: location.pathname,
+          userAgent: navigator.userAgent.slice(0, 120)
+        }).catch((err) => {
+          console.error("Visitor write failed:", err);
+          if (countEl) countEl.textContent = "Error";
         });
-      });
-    });
-
-    presenceRef.on("value", (snapshot) => {
-      const data = snapshot.val();
-      const total = data ? Object.keys(data).length : 0;
-      if (countEl) countEl.textContent = total;
+      }
     });
   } catch (error) {
     console.error("Live visitors failed:", error);
