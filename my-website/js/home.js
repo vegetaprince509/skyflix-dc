@@ -45,6 +45,7 @@ async function fetchFilipinoMovies() {
   const data = await res.json();
   return data.results;
 }
+
 async function fetchKoreanDramas() {
   const res = await fetch(
     `${BASE_URL}/discover/tv?api_key=${API_KEY}&with_original_language=ko&sort_by=popularity.desc`
@@ -52,6 +53,7 @@ async function fetchKoreanDramas() {
   const data = await res.json();
   return data.results;
 }
+
 // ======================
 // Banner Functions
 // ======================
@@ -60,22 +62,20 @@ function displayBanner(item) {
     "banner"
   ).style.backgroundImage = `url(${IMG_URL}${item.backdrop_path})`;
   document.getElementById("banner-title").textContent = item.title || item.name;
-  document.getElementById("banner-description").textContent = item.overview || "No description available";
+  document.getElementById("banner-description").textContent =
+    item.overview || "No description available";
 }
 
 function startBannerRotation(movies) {
-  // Clear any existing interval
   if (bannerInterval) clearInterval(bannerInterval);
 
-  // Display first movie immediately
   displayBanner(movies[0]);
 
-  // Start rotating through movies
   let currentIndex = 1;
   bannerInterval = setInterval(() => {
     displayBanner(movies[currentIndex]);
     currentIndex = (currentIndex + 1) % movies.length;
-  }, 8000); // Change every 8 seconds
+  }, 8000);
 }
 
 // ======================
@@ -129,18 +129,19 @@ function showDetails(item) {
   document.getElementById("modal-rating").innerHTML = `
     <span style="font-weight: bold; color: white;">IMDb:</span> ${rating}/10
   `;
-  
-  const serverSelector = document.querySelector('.server-selector');
-  if (!document.getElementById('stream-error-message')) {
-    const errorMessage = document.createElement('p');
-    errorMessage.id = 'stream-error-message';
-    errorMessage.style.color = 'white';
-    errorMessage.style.marginBottom = '15px';
-    errorMessage.style.fontSize = '16px';
-    errorMessage.innerHTML = 'If you get any error message when trying to stream, please <strong>Refresh</strong> the page or <strong>Switch</strong> to another streaming server below.';
+
+  const serverSelector = document.querySelector(".server-selector");
+  if (!document.getElementById("stream-error-message")) {
+    const errorMessage = document.createElement("p");
+    errorMessage.id = "stream-error-message";
+    errorMessage.style.color = "white";
+    errorMessage.style.marginBottom = "15px";
+    errorMessage.style.fontSize = "16px";
+    errorMessage.innerHTML =
+      "If you get any error message when trying to stream, please <strong>Refresh</strong> the page or <strong>Switch</strong> to another streaming server below.";
     serverSelector.parentNode.insertBefore(errorMessage, serverSelector);
   }
-  
+
   changeServer();
   document.getElementById("modal").style.display = "flex";
 }
@@ -168,11 +169,10 @@ function changeServer() {
     superembed: `https://moviesapi.club/${type}/${currentItem.id}`,
     "movie-web": `https://movie-web.app/media/tmdb-${type}-${currentItem.id}`,
     sflix: `https://sflix.to/${type}/${currentItem.id}`,
-    "korean-server": `https://asianembed.io/${type}/${currentItem.id}` // Added Korean server
+    "korean-server": `https://asianembed.io/${type}/${currentItem.id}`,
   };
 
-
-  embedURL = serverUrls[server] || serverUrls["vidsrc.cc"]; // Default fallback
+  embedURL = serverUrls[server] || serverUrls["vidsrc.cc"];
   document.getElementById("modal-video").src = embedURL;
 }
 
@@ -228,6 +228,99 @@ async function searchTMDB() {
 }
 
 // ======================
+// Visitor Widget
+// ======================
+function createVisitorWidget() {
+  if (document.getElementById("live-visitor-widget")) return;
+
+  const widget = document.createElement("div");
+  widget.id = "live-visitor-widget";
+  widget.innerHTML = `
+    <div class="visitor-header">
+      <span class="visitor-dot"></span>
+      <span>Live Visitors</span>
+    </div>
+    <div class="visitor-row">
+      <span>Visits</span>
+      <strong id="visitor-count">Loading...</strong>
+    </div>
+    <div class="visitor-row">
+      <span>Country</span>
+      <strong id="visitor-country">Loading...</strong>
+    </div>
+  `;
+  document.body.appendChild(widget);
+}
+
+async function updateVisitorCount() {
+  const countEl = document.getElementById("visitor-count");
+  if (!countEl) return;
+
+  const namespace = "skyflix";
+  const key = "homepage-visits";
+
+  try {
+    const res = await fetch(
+      `https://api.countapi.xyz/hit/${namespace}/${key}`
+    );
+    if (!res.ok) throw new Error("CountAPI failed");
+
+    const data = await res.json();
+    if (typeof data.value !== "number") throw new Error("Invalid count data");
+
+    countEl.textContent = data.value.toLocaleString();
+  } catch (error) {
+    let localCount = parseInt(localStorage.getItem("local-visit-count") || "0", 10);
+    localCount += 1;
+    localStorage.setItem("local-visit-count", String(localCount));
+    countEl.textContent = `${localCount}*`;
+    console.warn("Using local visit fallback:", error);
+  }
+}
+
+async function updateVisitorCountry() {
+  const countryEl = document.getElementById("visitor-country");
+  if (!countryEl) return;
+
+  const endpoints = [
+    {
+      url: "https://ipapi.co/json/",
+      parse: (data) => data && data.country_name,
+    },
+    {
+      url: "https://ipwho.is/",
+      parse: (data) => data && data.country,
+    },
+    {
+      url: "https://ipinfo.io/json",
+      parse: (data) => data && data.country,
+    },
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const res = await fetch(endpoint.url);
+      if (!res.ok) continue;
+      const data = await res.json();
+      const country = endpoint.parse(data);
+      if (country) {
+        countryEl.textContent = country;
+        return;
+      }
+    } catch (error) {
+      console.warn("Country API failed:", endpoint.url, error);
+    }
+  }
+
+  countryEl.textContent = "Unavailable";
+}
+
+async function initVisitorWidget() {
+  createVisitorWidget();
+  await Promise.all([updateVisitorCount(), updateVisitorCountry()]);
+}
+
+// ======================
 // Initialization
 // ======================
 async function init() {
@@ -236,7 +329,7 @@ async function init() {
     const tvShows = await fetchTrending("tv");
     const anime = await fetchTrendingAnime();
     const filipinoMovies = await fetchFilipinoMovies();
-    const koreanDramas = await fetchKoreanDramas(); // New line
+    const koreanDramas = await fetchKoreanDramas();
 
     startBannerRotation(trendingMovies);
 
@@ -244,47 +337,56 @@ async function init() {
     displayList(tvShows, "tvshows-list");
     displayList(anime, "anime-list");
     displayList(filipinoMovies, "tagalog-list");
-    displayList(koreanDramas, "korean-list"); // New line
+    displayList(koreanDramas, "korean-list");
+
+    await initVisitorWidget();
   } catch (error) {
     console.error("Error initializing app:", error);
+    initVisitorWidget();
   }
 }
-// Initialize the app when DOM is loaded
+
 document.addEventListener("DOMContentLoaded", init);
+
+// ======================
 // Disable Right Click and Developer Tools
 // ======================
-document.addEventListener('contextmenu', function(e) {
+document.addEventListener("contextmenu", function (e) {
   e.preventDefault();
 });
 
-document.addEventListener('keydown', function(e) {
-  // Disable F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U
-  if (e.key === 'F12' || 
-      (e.ctrlKey && e.shiftKey && e.key === 'I') || 
-      (e.ctrlKey && e.shiftKey && e.key === 'J') || 
-      (e.ctrlKey && e.key === 'U')) {
+document.addEventListener("keydown", function (e) {
+  if (
+    e.key === "F12" ||
+    (e.ctrlKey && e.shiftKey && e.key === "I") ||
+    (e.ctrlKey && e.shiftKey && e.key === "J") ||
+    (e.ctrlKey && e.key === "U")
+  ) {
     e.preventDefault();
   }
 });
 
-// Additional protection against console opening
-(function() {
-  var blocker = function(e) {
+(function () {
+  var blocker = function (e) {
     e.stopPropagation();
     e.preventDefault();
     return false;
   };
-  
-  // Prevent opening console by right-click inspect
-  document.addEventListener('contextmenu', blocker, true);
-  
-  // Prevent keyboard shortcuts
-  document.addEventListener('keydown', function(e) {
-    if (e.key === 'F12' || 
-        (e.ctrlKey && e.shiftKey && e.key === 'I') || 
-        (e.ctrlKey && e.shiftKey && e.key === 'J') || 
-        (e.ctrlKey && e.key === 'U')) {
-      blocker(e);
-    }
-  }, true);
+
+  document.addEventListener("contextmenu", blocker, true);
+
+  document.addEventListener(
+    "keydown",
+    function (e) {
+      if (
+        e.key === "F12" ||
+        (e.ctrlKey && e.shiftKey && e.key === "I") ||
+        (e.ctrlKey && e.shiftKey && e.key === "J") ||
+        (e.ctrlKey && e.key === "U")
+      ) {
+        blocker(e);
+      }
+    },
+    true
+  );
 })();
